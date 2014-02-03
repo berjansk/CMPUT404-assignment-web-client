@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
-# Copyright 2013 Abram Hindle
+# Copyright 2013 Abram Hindle, Olexiy Berjanskii
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class HTTPClient(object):
         # use sockets!
         if(port == None):
             port = 80
-        print(host, port)
+        #print(host, port)
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((host, port))  
         return s
@@ -50,9 +50,11 @@ class HTTPClient(object):
         return parts[1]
 
     def get_headers(self,data):
+        #For potential future use
         return None
 
     def get_body(self, data):
+        #For potentital future use
         return None
 
     # read everything from the socket
@@ -67,28 +69,8 @@ class HTTPClient(object):
                 done = not part
         return str(buffer)
 
-    def GET(self, url, args=None):
-        parsed_url = urlparse(url)
-        s = self.connect(parsed_url.hostname, parsed_url.port)
-        print(parsed_url)
-
-        path = parsed_url.path
-        if(path == ""):
-            path = "/"
-        if(parsed_url.query != ""):
-            path += "?" + parsed_url.query
-
-        request = "GET " + path + " HTTP/1.1\r\n"
-        request += "Host: " + parsed_url.hostname + "\r\n"
-        request += "Accept: */*" + "\r\n" 
-        request += "User-Agent: Custom\r\n"
-        request += "Connection: close\r\n\r\n"
-
-        print ("\n\n" + request + "\n\n")
-        s.send(request)
-        response = self.recvall(s)
-
-        response_arr = response.splitlines()
+    def process_response(self, data):
+        response_arr = data.splitlines()
 
         code = None
         reach_content = False
@@ -102,22 +84,74 @@ class HTTPClient(object):
                     reach_content = True
             else:
                 body += line + "\n"
+        return (code, body)
 
-        print "\n\n###########GOT RESPONSE" + code + " " + body+"\n############\n\n"
+    def GET(self, url):
+        parsed_url = urlparse(url)
+        s = self.connect(parsed_url.hostname, parsed_url.port)
+
+        path = parsed_url.path
+        if(path == ""):
+            path = "/"
+        if(parsed_url.query != ""):
+            path += "?" + parsed_url.query
+
+        request = "GET " + path + " HTTP/1.1\r\n"
+        request += "Host: " + parsed_url.hostname + "\r\n"
+        request += "Accept: */*" + "\r\n" 
+        request += "User-Agent: Custom\r\n"
+        request += "Connection: close\r\n\r\n"
+
+        #print ("\n\n" + request + "\n\n")
+        s.send(request)
+        response = self.recvall(s)
+
+        (code, body) = self.process_response(response)
 
         return HTTPRequest(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        parsed_url = urlparse(url)
+        s = self.connect(parsed_url.hostname, parsed_url.port)
+
+        path = parsed_url.path
+        if(path == ""):
+            path = "/"
+        if(parsed_url.query != ""):
+            path += "?" + parsed_url.query
+
+        content_length = 0
+        content = ""
+
+        if(args != None):
+            content = urllib.urlencode(args)
+            content_length = len(content)
+
+        request = "POST " + path + " HTTP/1.1\r\n"
+        request += "Host: " + parsed_url.hostname + "\r\n"
+        request += "Accept: */*" + "\r\n" 
+        request += "User-Agent: Custom\r\n"
+        request += "Content-Length: " + str(content_length) + "\r\n"
+        if(content_length > 0):
+            request += "Content-Type: application/x-www-form-urlencoded"     
+        request += "Connection: close\r\n\r\n"
+
+        if(content_length > 0):
+            request += content  
+
+        #print ("\n\n" + request + "\n\n")
+        s.send(request)
+        response = self.recvall(s)
+
+        (code, body) = self.process_response(response)
+
         return HTTPRequest(code, body)
 
     def command(self, command, url, args=None):
-        print("COMMAND" , url, command)
         if (command == "POST"):
             return self.POST( url, args )
         else:
-            return self.GET( url, args )
+            return self.GET( url )
     
 if __name__ == "__main__":
     client = HTTPClient()
@@ -126,6 +160,6 @@ if __name__ == "__main__":
         help()
         sys.exit(1)
     elif (len(sys.argv) == 3):
-        print client.command( sys.argv[1], sys.argv[2] )
+        print client.command( sys.argv[1], sys.argv[2] ).body
     else:
-        print client.command( sys.argv[1], sys.argv[2], sys.argv[3] )    
+        print client.command( sys.argv[1], sys.argv[2], sys.argv[3] ).body    
